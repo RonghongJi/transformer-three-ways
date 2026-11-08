@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Flask 时序 Transformer</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <header class="page-header">
+        <h1>时序 Transformer：Flask 版本</h1>
+
+        <p>
+            Flask 提供 API，HTML 负责页面结构，
+            JavaScript 负责请求接口和更新页面。
+        </p>
+    </header>
+
+    <main class="page-layout">
+        <aside class="control-panel">
+            <h2>实验参数</h2>
+
+            <label for="series-length">
+                时序长度
+            </label>
+            <input
+                id="series-length"
+                type="number"
+                min="300"
+                max="1200"
+                step="100"
+                value="600"
+            >
+
+            <label for="window-size">
+                输入窗口
+            </label>
+            <input
+                id="window-size"
+                type="number"
+                min="12"
+                max="60"
+                step="4"
+                value="24"
+            >
+
+            <label for="epochs">
+                训练轮数
+            </label>
+            <input
+                id="epochs"
+                type="number"
+                min="5"
+                max="30"
+                value="10"
+            >
+
+            <label for="seed">
+                随机种子
+            </label>
+            <input
+                id="seed"
+                type="number"
+                min="0"
+                max="9999"
+                value="42"
+            >
+
+            <label class="checkbox-label">
+                <input
+                    id="use-mps"
+                    type="checkbox"
+                >
+                使用 Apple GPU
+            </label>
+
+            <button id="preview-button">
+                重新生成预览
+            </button>
+
+            <button
+                id="train-button"
+                class="primary-button"
+            >
+                开始训练
+            </button>
+        </aside>
+
+        <section class="content-panel">
+            <section class="card">
+                <h2>模拟时序</h2>
+
+                <canvas id="series-chart"></canvas>
+            </section>
+
+            <section class="card">
+                <h2>训练状态</h2>
+
+                <div class="progress-track">
+                    <div
+                        id="progress-bar"
+                        class="progress-bar"
+                    ></div>
+                </div>
+
+                <p id="status-text">
+                    尚未开始训练
+                </p>
+
+                <canvas id="loss-chart"></canvas>
+
+                <pre id="log-area">等待训练……</pre>
+            </section>
+
+            <section
+                id="result-section"
+                class="card hidden"
+            >
+                <h2>测试结果</h2>
+
+                <div class="metrics">
+                    <div class="metric">
+                        <span>测试准确率</span>
+                        <strong id="test-accuracy">-</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>预测正确</span>
+                        <strong id="correct-count">-</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>预测错误</span>
+                        <strong id="incorrect-count">-</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>测试样本</span>
+                        <strong id="test-samples">-</strong>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>时间点</th>
+                                <th>当前值</th>
+                                <th>下一时刻真实值</th>
+                                <th>实际方向</th>
+                                <th>预测方向</th>
+                                <th>置信度</th>
+                                <th>结果</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="result-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script
+        src="{{ url_for('static', filename='app.js') }}"
+    ></script>
+</body>
+</html>

@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+
+    <title>FastAPI 时序 Transformer</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            font-family:
+                Inter,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+
+            color: #172033;
+            background: #f4f7fb;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        header {
+            padding: 30px 40px;
+            color: white;
+            background:
+                linear-gradient(
+                    135deg,
+                    #312e81,
+                    #7c3aed
+                );
+        }
+
+        header h1 {
+            margin: 0 0 8px;
+        }
+
+        header p {
+            margin: 0;
+            color: #ede9fe;
+        }
+
+        main {
+            display: grid;
+            grid-template-columns: 280px minmax(0, 1fr);
+            gap: 24px;
+            max-width: 1500px;
+            margin: auto;
+            padding: 24px;
+        }
+
+        aside,
+        .card {
+            padding: 22px;
+            border: 1px solid #dbe3f0;
+            border-radius: 16px;
+            background: white;
+            box-shadow:
+                0 12px 30px rgb(15 23 42 / 8%);
+        }
+
+        aside {
+            align-self: start;
+            position: sticky;
+            top: 24px;
+        }
+
+        aside h2,
+        .card h2 {
+            margin-top: 0;
+        }
+
+        label {
+            display: block;
+            margin: 15px 0 6px;
+            font-weight: 600;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+        }
+
+        .checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button {
+            width: 100%;
+            margin-top: 14px;
+            padding: 11px;
+            border: 0;
+            border-radius: 9px;
+            color: white;
+            background: #7c3aed;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        button.secondary {
+            color: #5b21b6;
+            background: #ede9fe;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+
+        .content {
+            display: grid;
+            gap: 24px;
+            min-width: 0;
+        }
+
+        .progress-track {
+            height: 14px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: #e2e8f0;
+        }
+
+        .progress-bar {
+            width: 0;
+            height: 100%;
+            background:
+                linear-gradient(
+                    90deg,
+                    #7c3aed,
+                    #22c55e
+                );
+            transition: width 0.2s ease;
+        }
+
+        .connection-state {
+            display: inline-block;
+            margin: 12px 0;
+            padding: 5px 10px;
+            border-radius: 999px;
+            color: #6b21a8;
+            background: #f3e8ff;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        pre {
+            max-height: 250px;
+            overflow: auto;
+            padding: 15px;
+            border-radius: 10px;
+            color: #d1fae5;
+            background: #111827;
+            line-height: 1.55;
+        }
+
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .metric {
+            padding: 15px;
+            border-radius: 12px;
+            background: #f5f3ff;
+        }
+
+        .metric span {
+            display: block;
+            margin-bottom: 6px;
+            color: #64748b;
+        }
+
+        .metric strong {
+            font-size: 23px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        th {
+            background: #f8fafc;
+        }
+
+        tr.correct {
+            background: #ecfdf5;
+        }
+
+        tr.incorrect {
+            background: #fff1f2;
+        }
+
+        .correct-label {
+            color: #047857;
+            font-weight: 700;
+        }
+
+        .incorrect-label {
+            color: #be123c;
+            font-weight: 700;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        canvas {
+            max-height: 350px;
+        }
+
+        @media (max-width: 900px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+
+            aside {
+                position: static;
+            }
+
+            .metrics {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>时序 Transformer：FastAPI 版本</h1>
+
+        <p>
+            FastAPI 提供 API，SSE 将训练进度主动推送给浏览器。
+        </p>
+    </header>
+
+    <main>
+        <aside>
+            <h2>实验参数</h2>
+
+            <label for="series-length">时序长度</label>
+            <input
+                id="series-length"
+                type="number"
+                min="300"
+                max="1200"
+                value="600"
+            >
+
+            <label for="window-size">输入窗口</label>
+            <input
+                id="window-size"
+                type="number"
+                min="12"
+                max="60"
+                value="24"
+            >
+
+            <label for="epochs">训练轮数</label>
+            <input
+                id="epochs"
+                type="number"
+                min="5"
+                max="30"
+                value="10"
+            >
+
+            <label for="seed">随机种子</label>
+            <input
+                id="seed"
+                type="number"
+                min="0"
+                max="9999"
+                value="42"
+            >
+
+            <label class="checkbox">
+                <input
+                    id="use-mps"
+                    type="checkbox"
+                >
+                使用 Apple GPU
+            </label>
+
+            <button
+                id="preview-button"
+                class="secondary"
+            >
+                重新生成预览
+            </button>
+
+            <button id="train-button">
+                开始训练
+            </button>
+        </aside>
+
+        <section class="content">
+            <section class="card">
+                <h2>模拟时序</h2>
+                <canvas id="series-chart"></canvas>
+            </section>
+
+            <section class="card">
+                <h2>实时训练</h2>
+
+                <div class="progress-track">
+                    <div
+                        id="progress-bar"
+                        class="progress-bar"
+                    ></div>
+                </div>
+
+                <div
+                    id="connection-state"
+                    class="connection-state"
+                >
+                    尚未连接 SSE
+                </div>
+
+                <p id="status-text">
+                    尚未开始训练
+                </p>
+
+                <canvas id="loss-chart"></canvas>
+
+                <pre id="log-area">等待训练……</pre>
+            </section>
+
+            <section
+                id="result-section"
+                class="card hidden"
+            >
+                <h2>测试结果</h2>
+
+                <div class="metrics">
+                    <div class="metric">
+                        <span>测试准确率</span>
+                        <strong id="test-accuracy">-</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>预测正确</span>
+                        <strong id="correct-count">-</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>预测错误</span>
+                        <strong id="incorrect-count">-</strong>
+                    </div>
+
+                    <div class="metric">
+                        <span>测试样本</span>
+                        <strong id="test-samples">-</strong>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>时间点</th>
+                                <th>当前值</th>
+                                <th>下一真实值</th>
+                                <th>实际方向</th>
+                                <th>预测方向</th>
+                                <th>置信度</th>
+                                <th>结果</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="result-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script>
+        let seriesChart = null;
+        let lossChart = null;
+        let eventSource = null;
+        let trainingHistory = [];
+
+
+        function getParameters() {
+            return {
+                series_length: Number(
+                    document.querySelector(
+                        "#series-length"
+                    ).value
+                ),
+                window_size: Number(
+                    document.querySelector(
+                        "#window-size"
+                    ).value
+                ),
+                epochs: Number(
+                    document.querySelector(
+                        "#epochs"
+                    ).value
+                ),
+                seed: Number(
+                    document.querySelector(
+                        "#seed"
+                    ).value
+                ),
+                use_mps: document.querySelector(
+                    "#use-mps"
+                ).checked,
+            };
+        }
+
+
+        async function loadPreview() {
+            const parameters = getParameters();
+
+            const query = new URLSearchParams({
+                series_length:
+                    parameters.series_length,
+                seed: parameters.seed,
+            });
+
+            const response = await fetch(
+                `/api/preview?${query}`
+            );
+
+            if (!response.ok) {
+                throw new Error(
+                    `预览失败：${response.status}`
+                );
+            }
+
+            const data = await response.json();
+
+            renderSeries(data.series);
+        }
+
+
+        function renderSeries(series) {
+            if (seriesChart !== null) {
+                seriesChart.destroy();
+            }
+
+            seriesChart = new Chart(
+                document.querySelector(
+                    "#series-chart"
+                ),
+                {
+                    type: "line",
+                    data: {
+                        labels: series.map(
+                            item => item.time
+                        ),
+                        datasets: [
+                            {
+                                label: "模拟数值",
+                                data: series.map(
+                                    item => item.value
+                                ),
+                                borderColor: "#7c3aed",
+                                backgroundColor:
+                                    "rgba(124,58,237,0.10)",
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                fill: true,
+                            },
+                        ],
+                    },
+                    options: {
+                        responsive: true,
+                        animation: false,
+                    },
+                }
+            );
+        }
+
+
+        function renderLoss() {
+            const labels = trainingHistory.map(
+                item => item.epoch
+            );
+
+            const losses = trainingHistory.map(
+                item => item.loss
+            );
+
+            if (lossChart === null) {
+                lossChart = new Chart(
+                    document.querySelector(
+                        "#loss-chart"
+                    ),
+                    {
+                        type: "line",
+                        data: {
+                            labels,
+                            datasets: [
+                                {
+                                    label: "训练损失",
+                                    data: losses,
+                                    borderColor: "#dc2626",
+                                    borderWidth: 2,
+                                },
+                            ],
+                        },
+                        options: {
+                            responsive: true,
+                            animation: false,
+                        },
+                    }
+                );
+
+                return;
+            }
+
+            lossChart.data.labels = labels;
+            lossChart.data.datasets[0].data = losses;
+            lossChart.update("none");
+        }
+
+
+        function handleProgress(progress) {
+            trainingHistory.push(progress);
+
+            document.querySelector(
+                "#progress-bar"
+            ).style.width =
+                `${progress.progress}%`;
+
+            document.querySelector(
+                "#status-text"
+            ).textContent =
+                `Epoch ${progress.epoch}/` +
+                `${progress.epochs}｜` +
+                `Loss：${progress.loss.toFixed(4)}｜` +
+                `准确率：` +
+                `${(progress.accuracy * 100).toFixed(2)}%`;
+
+            document.querySelector(
+                "#log-area"
+            ).textContent = trainingHistory
+                .slice(-10)
+                .map(
+                    item =>
+                        `Epoch ${String(
+                            item.epoch
+                        ).padStart(2, "0")} | ` +
+                        `Loss ${item.loss.toFixed(4)} | ` +
+                        `Accuracy ${(
+                            item.accuracy * 100
+                        ).toFixed(2)}%`
+                )
+                .join("\n");
+
+            renderLoss();
+        }
+
+
+        function renderResults(output) {
+            const metrics = output.metrics;
+
+            document.querySelector(
+                "#result-section"
+            ).classList.remove("hidden");
+
+            document.querySelector(
+                "#test-accuracy"
+            ).textContent =
+                `${(
+                    metrics.test_accuracy * 100
+                ).toFixed(2)}%`;
+
+            document.querySelector(
+                "#correct-count"
+            ).textContent =
+                metrics.correct_count;
+
+            document.querySelector(
+                "#incorrect-count"
+            ).textContent =
+                metrics.incorrect_count;
+
+            document.querySelector(
+                "#test-samples"
+            ).textContent =
+                metrics.test_samples;
+
+            const tableBody = document.querySelector(
+                "#result-table-body"
+            );
+
+            tableBody.innerHTML = "";
+
+            for (const row of output.results) {
+                const tableRow =
+                    document.createElement("tr");
+
+                tableRow.className = row.correct
+                    ? "correct"
+                    : "incorrect";
+
+                const label = row.correct
+                    ? "✅ 正确"
+                    : "❌ 错误";
+
+                const labelClass = row.correct
+                    ? "correct-label"
+                    : "incorrect-label";
+
+                tableRow.innerHTML = `
+                    <td>${row.time}</td>
+                    <td>${row.current_value}</td>
+                    <td>${row.next_value}</td>
+                    <td>${row.actual_direction}</td>
+                    <td>${row.predicted_direction}</td>
+                    <td>
+                        ${(
+                            row.confidence * 100
+                        ).toFixed(2)}%
+                    </td>
+                    <td class="${labelClass}">
+                        ${label}
+                    </td>
+                `;
+
+                tableBody.appendChild(tableRow);
+            }
+        }
+
+
+        function connectToEvents(eventsUrl) {
+            if (eventSource !== null) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource(
+                eventsUrl
+            );
+
+            eventSource.addEventListener(
+                "connected",
+                event => {
+                    const data = JSON.parse(
+                        event.data
+                    );
+
+                    document.querySelector(
+                        "#connection-state"
+                    ).textContent =
+                        `SSE已连接：${data.job_id}`;
+                }
+            );
+
+            eventSource.addEventListener(
+                "progress",
+                event => {
+                    const progress = JSON.parse(
+                        event.data
+                    );
+
+                    handleProgress(progress);
+                }
+            );
+
+            eventSource.addEventListener(
+                "completed",
+                event => {
+                    const output = JSON.parse(
+                        event.data
+                    );
+
+                    renderResults(output);
+
+                    document.querySelector(
+                        "#connection-state"
+                    ).textContent =
+                        "训练完成，SSE连接已关闭";
+
+                    document.querySelector(
+                        "#train-button"
+                    ).disabled = false;
+
+                    eventSource.close();
+                    eventSource = null;
+                }
+            );
+
+            eventSource.addEventListener(
+                "failed",
+                event => {
+                    const data = JSON.parse(
+                        event.data
+                    );
+
+                    handleError(
+                        new Error(data.message)
+                    );
+
+                    eventSource.close();
+                    eventSource = null;
+                }
+            );
+
+            eventSource.onerror = () => {
+                if (eventSource !== null) {
+                    document.querySelector(
+                        "#connection-state"
+                    ).textContent =
+                        "SSE连接发生异常";
+                }
+            };
+        }
+
+
+        async function startTraining() {
+            trainingHistory = [];
+
+            if (lossChart !== null) {
+                lossChart.destroy();
+                lossChart = null;
+            }
+
+            document.querySelector(
+                "#result-section"
+            ).classList.add("hidden");
+
+            document.querySelector(
+                "#progress-bar"
+            ).style.width = "0%";
+
+            document.querySelector(
+                "#status-text"
+            ).textContent =
+                "正在创建训练任务……";
+
+            document.querySelector(
+                "#log-area"
+            ).textContent =
+                "等待服务器推送第一个Epoch……";
+
+            const trainButton =
+                document.querySelector(
+                    "#train-button"
+                );
+
+            trainButton.disabled = true;
+
+            const response = await fetch(
+                "/api/train",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json",
+                    },
+                    body: JSON.stringify(
+                        getParameters()
+                    ),
+                }
+            );
+
+            if (!response.ok) {
+                const errorData =
+                    await response.json();
+
+                throw new Error(
+                    JSON.stringify(errorData)
+                );
+            }
+
+            const job = await response.json();
+
+            connectToEvents(job.events_url);
+        }
+
+
+        function handleError(error) {
+            console.error(error);
+
+            document.querySelector(
+                "#status-text"
+            ).textContent =
+                `发生错误：${error.message}`;
+
+            document.querySelector(
+                "#train-button"
+            ).disabled = false;
+        }
+
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            () => {
+                document.querySelector(
+                    "#preview-button"
+                ).addEventListener(
+                    "click",
+                    () => {
+                        loadPreview().catch(
+                            handleError
+                        );
+                    }
+                );
+
+                document.querySelector(
+                    "#train-button"
+                ).addEventListener(
+                    "click",
+                    () => {
+                        startTraining().catch(
+                            handleError
+                        );
+                    }
+                );
+
+                loadPreview().catch(handleError);
+            }
+        );
+    </script>
+</body>
+</html>
